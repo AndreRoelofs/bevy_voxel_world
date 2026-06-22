@@ -98,8 +98,8 @@ pub(crate) fn prepare_texture(
         return;
     }
 
-    let image = images.get_mut(&loading_texture.handle).unwrap();
-    if let Err(err) = prepare_voxel_texture(image, texture_layers.0) {
+    let mut image = images.get_mut(&loading_texture.handle).unwrap();
+    if let Err(err) = prepare_voxel_texture(&mut image, texture_layers.0) {
         warn_once!("Failed to prepare voxel texture as a texture array: {err}");
     }
 

@@ -198,7 +198,7 @@ fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
     commands.spawn((
         DirectionalLight {
             color: Color::srgb(0.98, 0.95, 0.82),
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
         Transform::from_xyz(0.0, 0.0, 0.0)
@@ -222,13 +222,13 @@ fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
         },
     ));
 
-    let font = fonts.add(Font::try_from_bytes(DEFAULT_FONT_DATA.to_vec()).unwrap());
+    let font = fonts.add(Font::from_bytes(DEFAULT_FONT_DATA.to_vec()));
 
     commands.spawn((
         Text::new("FPS: -- (--)\nFrame: -- ms"),
         TextFont {
-            font,
-            font_size: 18.0,
+            font: FontSource::Handle(font),
+            font_size: FontSize::Px(18.0),
             ..default()
         },
         TextColor(Color::WHITE),

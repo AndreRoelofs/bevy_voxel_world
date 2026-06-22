@@ -12,10 +12,9 @@ readme = "README.md"
 exclude = ["/.github/", "/assets/", "/examples/"]
 keywords = ["bevy", "gamedev", "voxelengine", "voxels"]
 categories = ["game-development", "graphics"]
-
-[[example]]
-name = "fast_traversal_ray"
-path = "examples/fast_traversal_ray.rs"
+# Examples are listed explicitly so the bevy 0.18-only ones
+# (fast_traversal_ray, navigation) stay disabled until their deps support 0.19.
+autoexamples = false
 
 [[example]]
 name = "bombs"
@@ -34,6 +33,10 @@ name = "custom_meshing"
 path = "examples/custom_meshing.rs"
 
 [[example]]
+name = "custom_material"
+path = "examples/custom_material.rs"
+
+[[example]]
 name = "multiple_worlds"
 path = "examples/multiple_worlds.rs"
 
@@ -46,12 +49,34 @@ name = "multiple_cameras"
 path = "examples/multiple_cameras.rs"
 
 [[example]]
-name = "navigation"
-path = "examples/navigation.rs"
+name = "ray_cast"
+path = "examples/ray_cast.rs"
+
+[[example]]
+name = "set_voxel"
+path = "examples/set_voxel.rs"
+
+[[example]]
+name = "textures"
+path = "examples/textures.rs"
+
+[[example]]
+name = "textures_custom_idx"
+path = "examples/textures_custom_idx.rs"
+
+# Disabled until their bevy 0.18-only dependencies are migrated to 0.19:
+#   fast_traversal_ray -> bevy_panorbit_camera
+#   navigation         -> bevy_northstar, bevy_panorbit_camera
+# [[example]]
+# name = "fast_traversal_ray"
+# path = "examples/fast_traversal_ray.rs"
+# [[example]]
+# name = "navigation"
+# path = "examples/navigation.rs"
 
 [dependencies]
 ahash = "0.8.11"
-bevy = { version = "0.18", default-features = false, features = [
+bevy = { version = "0.19", default-features = false, features = [
   "bevy_asset",
   "bevy_log",
   "bevy_pbr",
@@ -59,7 +84,7 @@ bevy = { version = "0.18", default-features = false, features = [
   "bevy_gizmos",
   "png",
 ] }
-bevy_shader = "0.18"
+bevy_shader = "0.19"
 block-mesh = "0.2.0"
 futures-lite = "2.6.1"
 hashbrown = "0.17.1"
@@ -71,10 +96,20 @@ weak-table = { version = "0.3.2", features = ["ahash"] }
 getrandom = { version = "0.4", features = ["wasm_js"] }
 
 [dev-dependencies]
-bevy_northstar = { version = "0.6.2" }
-bevy = { version = "0.18", default-features = false, features = ["3d", "png"] }
-bevy_panorbit_camera = { version = "0.34.0" }
+# bevy 0.19 slimmed down the "3d" meta-feature, so the UI/text bits the examples
+# use (Node, Text, Font, FontSource, ...) must now be requested explicitly.
+bevy = { version = "0.19", default-features = false, features = [
+  "3d",
+  "png",
+  "bevy_ui",
+  "bevy_ui_render",
+  "bevy_text",
+  "default_font",
+] }
 noise = { version = "0.9.0" }
+# Disabled until they release bevy 0.19-compatible versions:
+# bevy_northstar = { version = "0.6.2" }       # used by examples/navigation.rs
+# bevy_panorbit_camera = { version = "0.34.0" } # used by fast_traversal_ray & navigation
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
