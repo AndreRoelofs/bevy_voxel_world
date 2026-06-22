@@ -1,8 +1,24 @@
 # Changelog
 
+## 0.16
+
+- Fix: `set_voxel` now queues loaded neighboring chunks for remeshing when a changed voxel is part of their padded chunk data. This keeps meshes correct across chunk boundaries without requiring user code to manually mark adjacent chunks.
+- Fix issue with voxel textures with a single texture index.
+- Use minimal bevy features in cargo manifest
+- Adds WASM support
+- Add support for multiple voxelworld cameras (i.e, spawn chunks at multiple locations)
+
+Thanks to @nathanaelneveux
+
+## 0.15.1
+
+- Fix: `set_voxel` no longer triggers a chunk remesh when the written value is identical to the current value. Previously, writing the same voxel value every frame would cause perpetual remesh cancellation — the in-progress async meshing task was dropped each frame before completion, preventing the chunk from ever rendering.
+
 ## 0.15.0
 
 - Upgrade to Bevy 0.18
+
+Thanks to @AndreRoelofs
 
 ## 0.14.0
 

@@ -70,7 +70,11 @@ fn setup(mut commands: Commands) {
     ));
 
     // Sun
-    let cascade_shadow_config = CascadeShadowConfigBuilder { ..default() }.build();
+    let cascade_shadow_config = CascadeShadowConfigBuilder {
+        maximum_distance: 700.0,
+        ..default()
+    }
+    .build();
     commands.spawn((
         DirectionalLight {
             color: Color::srgb(0.98, 0.95, 0.82),
@@ -90,6 +94,7 @@ fn setup(mut commands: Commands) {
     });
 }
 
+#[allow(clippy::type_complexity)]
 fn get_voxel_fn() -> Box<
     dyn FnMut(IVec3, Option<WorldVoxel<BlockTexture>>) -> WorldVoxel<BlockTexture>
         + Send

@@ -3,7 +3,7 @@ use bevy::{
 };
 use bevy_voxel_world::prelude::*;
 use noise::{HybridMulti, NoiseFn, Perlin};
-use rand::Rng;
+use rand::RngExt;
 use std::{sync::Arc, time::Duration};
 #[derive(Resource, Clone, Default)]
 struct MainWorld;
@@ -64,7 +64,12 @@ fn setup(mut commands: Commands) {
     ));
 
     // Sun
-    let cascade_shadow_config = CascadeShadowConfigBuilder { ..default() }.build();
+    let cascade_shadow_config = CascadeShadowConfigBuilder {
+        maximum_distance: 1000.0,
+        first_cascade_far_bound: 200.0,
+        ..default()
+    }
+    .build();
     commands.spawn((
         DirectionalLight {
             color: Color::srgb(0.98, 0.95, 0.82),

@@ -189,7 +189,12 @@ fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
     ));
 
     // Sun
-    let cascade_shadow_config = CascadeShadowConfigBuilder { ..default() }.build();
+    let cascade_shadow_config = CascadeShadowConfigBuilder {
+        maximum_distance: 3000.0,
+        first_cascade_far_bound: 200.0,
+        ..default()
+    }
+    .build();
     commands.spawn((
         DirectionalLight {
             color: Color::srgb(0.98, 0.95, 0.82),
@@ -202,7 +207,7 @@ fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
     ));
 
     // Ambient light, same color as sun
-    commands.insert_resource(AmbientLight {
+    commands.insert_resource(GlobalAmbientLight {
         color: Color::srgb(0.98, 0.95, 0.82),
         brightness: 100.0,
         affects_lightmapped_meshes: true,

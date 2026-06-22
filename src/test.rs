@@ -1,21 +1,25 @@
 use bevy::mesh::VertexAttributeValues;
 use bevy::prelude::*;
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 
-use crate::chunk_map::ChunkMapUpdateBuffer;
+use crate::chunk_map::{ChunkMap, ChunkMapInsertBuffer, ChunkMapUpdateBuffer};
 use crate::configuration::VoxelWorldConfig;
 use crate::mesh_cache::MeshCacheInsertBuffer;
 use crate::meshing::generate_chunk_mesh_for_shape;
 use crate::prelude::*;
 use crate::voxel_traversal::voxel_line_traversal;
 use crate::{
-    chunk::{ChunkData, ChunkTask, FillType, CHUNK_SIZE_F, PADDED_CHUNK_SIZE},
+    chunk::{
+        Chunk, ChunkData, ChunkTask, FillType, CHUNK_SIZE_F, CHUNK_SIZE_I,
+        PADDED_CHUNK_SIZE,
+    },
     prelude::VoxelWorldCamera,
     voxel_world::*,
     voxel_world_internal::ModifiedVoxels,
 };
 use ndshape::{RuntimeShape, Shape};
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{rngs::StdRng, RngExt, SeedableRng};
 
 fn _test_setup_app() -> App {
     let mut app = App::new();
@@ -29,6 +33,48 @@ fn _test_setup_app() -> App {
     });
 
     app
+}
+
+#[test]
+fn chunks_spawn_with_multiple_voxel_world_cameras() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, VoxelWorldPlugin::<DefaultWorld>::minimal()));
+    app.add_systems(Startup, |mut commands: Commands| {
+        let first_transform =
+            Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y);
+        commands.spawn((
+            Camera::default(),
+            Camera3d::default(),
+            first_transform,
+            GlobalTransform::from(first_transform),
+            VoxelWorldCamera::<DefaultWorld>::default(),
+        ));
+
+        let second_transform =
+            Transform::from_xyz(1000.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y);
+        commands.spawn((
+            Camera::default(),
+            Camera3d::default(),
+            second_transform,
+            GlobalTransform::from(second_transform),
+            VoxelWorldCamera::<DefaultWorld>::default(),
+        ));
+    });
+
+    app.update();
+
+    type Mat = <DefaultWorld as VoxelWorldConfig>::MaterialIndex;
+    let chunk_map = app.world().resource::<ChunkMap<DefaultWorld, Mat>>();
+    let chunk_map_read_lock = chunk_map.get_read_lock();
+
+    assert!(ChunkMap::<DefaultWorld, Mat>::contains_chunk(
+        &IVec3::ZERO,
+        &chunk_map_read_lock,
+    ));
+    assert!(ChunkMap::<DefaultWorld, Mat>::contains_chunk(
+        &(IVec3::new(1000, 10, 10) / CHUNK_SIZE_I),
+        &chunk_map_read_lock,
+    ));
 }
 
 #[test]
@@ -206,6 +252,126 @@ fn chunk_will_update_event() {
     );
 
     app.update();
+}
+
+#[test]
+fn affected_chunk_positions_include_padding_neighbors() {
+    let affected: HashSet<_> = get_affected_chunk_positions(IVec3::new(0, 0, 0))
+        .into_iter()
+        .collect();
+    let expected = HashSet::from([
+        IVec3::new(0, 0, 0),
+        IVec3::new(0, 0, -1),
+        IVec3::new(0, -1, 0),
+        IVec3::new(0, -1, -1),
+        IVec3::new(-1, 0, 0),
+        IVec3::new(-1, 0, -1),
+        IVec3::new(-1, -1, 0),
+        IVec3::new(-1, -1, -1),
+    ]);
+
+    assert_eq!(affected, expected);
+
+    assert_eq!(
+        get_affected_chunk_positions(IVec3::new(1, 1, 1)),
+        vec![IVec3::new(0, 0, 0)]
+    );
+
+    let affected: HashSet<_> =
+        get_affected_chunk_positions(IVec3::new(CHUNK_SIZE_I - 1, 1, 1))
+            .into_iter()
+            .collect();
+    let expected = HashSet::from([IVec3::new(0, 0, 0), IVec3::new(1, 0, 0)]);
+
+    assert_eq!(affected, expected);
+}
+
+#[test]
+fn set_voxel_on_chunk_boundary_marks_padding_neighbors_for_remesh() {
+    let expected = HashSet::from([
+        IVec3::new(0, 0, 0),
+        IVec3::new(0, 0, -1),
+        IVec3::new(0, -1, 0),
+        IVec3::new(0, -1, -1),
+        IVec3::new(-1, 0, 0),
+        IVec3::new(-1, 0, -1),
+        IVec3::new(-1, -1, 0),
+        IVec3::new(-1, -1, -1),
+    ]);
+
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, VoxelWorldPlugin::<DefaultWorld>::minimal()));
+    let camera_transform =
+        Transform::from_xyz(10.0, 10.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y);
+    app.world_mut().spawn((
+        Camera::default(),
+        Camera3d::default(),
+        camera_transform,
+        GlobalTransform::from(camera_transform),
+        VoxelWorldCamera::<DefaultWorld>::default(),
+    ));
+    app.update();
+
+    type Mat = <DefaultWorld as VoxelWorldConfig>::MaterialIndex;
+    let mut chunks = Vec::new();
+    for chunk_pos in expected.iter().copied() {
+        let entity = app.world_mut().spawn_empty().id();
+        let shape = UVec3::splat(PADDED_CHUNK_SIZE);
+        app.world_mut()
+            .entity_mut(entity)
+            .insert(Chunk::<DefaultWorld>::new(
+                chunk_pos, 0, entity, shape, shape,
+            ));
+        chunks.push((chunk_pos, ChunkData::<Mat>::with_entity(entity)));
+    }
+
+    app.world_mut()
+        .resource_mut::<ChunkMapInsertBuffer<DefaultWorld, Mat>>()
+        .extend(chunks);
+    app.update();
+    for _ in 0..100 {
+        app.update();
+    }
+
+    app.world_mut()
+        .resource_mut::<Messages<ChunkWillRemesh<DefaultWorld>>>()
+        .clear();
+
+    let remeshed_chunks = Arc::new(Mutex::new(Vec::new()));
+    let remeshed_chunks_writer = remeshed_chunks.clone();
+    app.add_systems(
+        Update,
+        move |mut events: MessageReader<ChunkWillRemesh<DefaultWorld>>| {
+            remeshed_chunks_writer
+                .lock()
+                .unwrap()
+                .extend(events.read().map(|event| event.chunk_key));
+        },
+    );
+
+    app.add_systems(
+        Update,
+        |mut voxel_world: VoxelWorld<DefaultWorld>, mut did_set: Local<bool>| {
+            if *did_set {
+                return;
+            }
+
+            voxel_world.set_voxel(IVec3::new(0, 0, 0), WorldVoxel::Solid(1));
+            *did_set = true;
+        },
+    );
+
+    app.update();
+    app.update();
+    app.update();
+
+    let remeshed_chunks: HashSet<_> =
+        remeshed_chunks.lock().unwrap().iter().copied().collect();
+
+    assert!(
+        expected.is_subset(&remeshed_chunks),
+        "expected {expected:?} to be remeshed, got {remeshed_chunks:?}"
+    );
 }
 
 #[test]
@@ -669,6 +835,80 @@ fn can_get_chunk_data() {
         let chunk_data = voxel_world.get_chunk_data(IVec3::ZERO);
         assert!(chunk_data.is_some());
     });
+
+    app.update();
+}
+
+#[test]
+fn set_voxel_same_value_does_not_trigger_remesh() {
+    let mut app = _test_setup_app();
+
+    // Set a voxel and let the write fully process through the pipeline.
+    // The system will keep writing Solid(1) every frame.
+    app.add_systems(Update, |mut voxel_world: VoxelWorld<DefaultWorld>| {
+        voxel_world.set_voxel(IVec3::new(0, 0, 0), WorldVoxel::Solid(1));
+    });
+
+    // Run enough frames so the initial write is flushed into modified_voxels
+    // and subsequent same-value writes are skipped by the guard.
+    for _ in 0..5 {
+        app.update();
+    }
+
+    // Add a reader with a frame counter. On the first run, drain any stale
+    // messages from the initial write. On subsequent runs, assert that no
+    // new messages appear (guard prevents redundant remeshes).
+    app.add_systems(
+        Update,
+        |mut ev: MessageReader<ChunkWillUpdate<DefaultWorld>>, mut frame: Local<u32>| {
+            *frame += 1;
+            if *frame > 1 {
+                let count = ev.read().count();
+                assert_eq!(
+                    count, 0,
+                    "expected no ChunkWillUpdate when setting voxel to same value"
+                );
+            } else {
+                // Drain stale messages from the initial set_voxel
+                ev.read().count();
+            }
+        },
+    );
+
+    app.update(); // reader frame 1 — drains stale messages
+    app.update(); // reader frame 2 — asserts no new messages
+    app.update(); // reader frame 3 — asserts again for good measure
+}
+
+#[test]
+fn set_voxel_different_value_triggers_remesh() {
+    let mut app = _test_setup_app();
+
+    // Set initial voxel
+    app.add_systems(Update, |mut voxel_world: VoxelWorld<DefaultWorld>| {
+        voxel_world.set_voxel(IVec3::new(0, 0, 0), WorldVoxel::Solid(1));
+    });
+    app.update();
+    app.update();
+
+    // Now change to a different value — should produce a ChunkWillUpdate event
+    app.add_systems(Update, |mut voxel_world: VoxelWorld<DefaultWorld>| {
+        voxel_world.set_voxel(IVec3::new(0, 0, 0), WorldVoxel::Solid(2));
+    });
+
+    app.update(); // writes Solid(2) to buffer
+    app.update(); // flushes — value differs, should trigger update
+
+    app.add_systems(
+        Update,
+        |mut ev_chunk_will_update: MessageReader<ChunkWillUpdate<DefaultWorld>>| {
+            let count = ev_chunk_will_update.read().count();
+            assert!(
+                count > 0,
+                "expected ChunkWillUpdate when setting voxel to different value"
+            );
+        },
+    );
 
     app.update();
 }
